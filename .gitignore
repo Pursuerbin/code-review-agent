@@ -1,0 +1,16 @@
+# Backend
+code-review-agent/target/
+code-review-agent/.classpath
+code-review-agent/.project
+code-review-agent/.settings/
+*.log
+
+# Frontend
+code-review-frontend/node_modules/
+code-review-frontend/dist/
+code-review-frontend/.vite/
+code-review-frontend/*.log
+
+# IDE
+.idea/
+*.iml

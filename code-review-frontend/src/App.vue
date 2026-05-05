@@ -1,0 +1,738 @@
+<template>
+  <div id="app">
+    <div class="app-wrapper">
+      <header class="app-header">
+        <div class="header-content">
+          <div class="logo">
+            <span class="logo-icon">🔍</span>
+            <span class="logo-text">智能代码审查助手</span>
+          </div>
+          <nav class="header-nav">
+            <span class="nav-hint">基于 AI 的自动化代码质量分析</span>
+          </nav>
+        </div>
+      </header>
+
+      <main class="app-main">
+        <div class="main-content">
+          <el-tabs v-model="activeTab" class="custom-tabs" stretch>
+            <el-tab-pane name="submit">
+              <template #label>
+                <span class="tab-label">
+                  <span class="tab-icon">✨</span>
+                  代码审查
+                </span>
+              </template>
+              <div class="submit-panel">
+                <el-card shadow="hover" class="submit-card">
+                  <template #header>
+                    <div class="card-header">
+                      <div class="header-title">
+                        <span class="title-icon">📝</span>
+                        <span>提交代码审查</span>
+                      </div>
+                    </div>
+                  </template>
+                  <el-form :model="submitForm" label-position="top">
+                    <el-form-item label="编程语言">
+                      <el-select v-model="submitForm.lang" placeholder="请选择语言" class="full-width">
+                        <el-option label="☕ Java" value="java"></el-option>
+                        <el-option label="🐍 Python" value="python"></el-option>
+                        <el-option label="🌐 JavaScript" value="javascript"></el-option>
+                        <el-option label="💎 Ruby" value="ruby"></el-option>
+                        <el-option label="⚙️ Go" value="go"></el-option>
+                      </el-select>
+                    </el-form-item>
+                    <el-form-item label="代码片段">
+                      <el-input
+                        type="textarea"
+                        v-model="submitForm.codeContent"
+                        :rows="12"
+                        placeholder="请输入待审查的代码..."
+                        class="code-input"
+                        :autosize="{ minRows: 8, maxRows: 20 }"
+                      ></el-input>
+                    </el-form-item>
+                    <el-form-item class="submit-btn-item">
+                      <el-button type="primary" @click="handleSubmit" :loading="submitting" class="submit-btn">
+                        <span v-if="!submitting">🚀 提交审查</span>
+                        <span v-else>处理中...</span>
+                      </el-button>
+                    </el-form-item>
+                  </el-form>
+                </el-card>
+
+                <el-card v-if="currentTask" shadow="hover" class="result-card" :class="{ 'animate-in': currentTask }">
+                  <template #header>
+                    <div class="card-header">
+                      <div class="header-title">
+                        <span class="title-icon">📊</span>
+                        <span>审查结果</span>
+                        <el-tag class="task-id-tag" type="info" effect="plain">任务 #{{ currentTask.id }}</el-tag>
+                      </div>
+                      <el-tag :type="statusType(currentTask.status)" effect="dark" size="small">
+                        {{ statusText(currentTask.status) }}
+                      </el-tag>
+                    </div>
+                  </template>
+                  <div v-if="currentTask.status === 2" class="result-content">
+                    <div class="markdown-body" v-html="renderedReport"></div>
+                  </div>
+                  <div v-else-if="currentTask.status === 3" class="error-content">
+                    <el-alert
+                      title="审查失败"
+                      type="error"
+                      :description="currentTask.resultSummary"
+                      show-icon
+                      :closable="false"
+                    />
+                  </div>
+                  <div v-else class="loading-content">
+                    <div class="loading-spinner">
+                      <el-icon class="is-loading"><Loading /></el-icon>
+                    </div>
+                    <p class="loading-text">正在审查中，请稍候...</p>
+                    <el-progress :percentage="pollingProgress" :format="() => ''" class="custom-progress" />
+                  </div>
+                </el-card>
+              </div>
+            </el-tab-pane>
+
+            <el-tab-pane name="history">
+              <template #label>
+                <span class="tab-label">
+                  <span class="tab-icon">📜</span>
+                  历史记录
+                </span>
+              </template>
+              <div class="history-panel">
+                <el-card shadow="hover" class="history-card">
+                  <template #header>
+                    <div class="card-header">
+                      <div class="header-title">
+                        <span class="title-icon">📜</span>
+                        <span>审查历史</span>
+                      </div>
+                      <el-tag type="info" effect="plain">{{ historyList.length }} 条记录</el-tag>
+                    </div>
+                  </template>
+                  <div v-if="historyList.length === 0" class="empty-state">
+                    <div class="empty-icon">📭</div>
+                    <p class="empty-text">暂无历史记录</p>
+                    <p class="empty-hint">提交代码审查后会自动保存到这里</p>
+                  </div>
+                  <el-table
+                    v-else
+                    :data="historyList"
+                    style="width: 100%"
+                    @row-click="viewHistoryTask"
+                    class="history-table"
+                    stripe
+                  >
+                    <el-table-column prop="id" label="任务ID" width="100">
+                      <template #default="scope">
+                        <span class="task-id">#{{ scope.row.id }}</span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="lang" label="语言" width="120">
+                      <template #default="scope">
+                        <el-tag type="info" effect="plain" size="small">{{ scope.row.lang }}</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="status" label="状态" width="120">
+                      <template #default="scope">
+                        <el-tag :type="statusType(scope.row.status)" size="small">
+                          {{ statusText(scope.row.status) }}
+                        </el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="createdAt" label="创建时间">
+                      <template #default="scope">
+                        <span class="time-text">{{ formatTime(scope.row.createdAt) }}</span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="100" align="center">
+                      <template #default="scope">
+                        <el-button type="primary" link size="small" @click.stop="viewHistoryTask(scope.row)">
+                          查看
+                        </el-button>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </el-card>
+              </div>
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+      </main>
+
+      <footer class="app-footer">
+        <p>智能代码审查助手 - Powered by AI</p>
+      </footer>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
+import { submitTask, getTask } from '@/api/review'
+import { marked } from 'marked'
+
+const activeTab = ref('submit')
+
+const submitForm = reactive({
+  codeContent: '',
+  lang: 'java'
+})
+
+const submitting = ref(false)
+const currentTask = ref(null)
+let pollingTimer = null
+const pollingInterval = 2000
+let pollingCount = 0
+
+const historyList = ref([])
+
+const loadHistory = () => {
+  const stored = localStorage.getItem('review_history')
+  if (stored) {
+    historyList.value = JSON.parse(stored)
+  }
+}
+
+const saveToHistory = (task) => {
+  const existing = historyList.value.find(t => t.id === task.id)
+  if (!existing) {
+    historyList.value.unshift(task)
+    if (historyList.value.length > 50) historyList.value.pop()
+    localStorage.setItem('review_history', JSON.stringify(historyList.value))
+  } else {
+    const index = historyList.value.findIndex(t => t.id === task.id)
+    if (index !== -1) {
+      historyList.value[index] = task
+      localStorage.setItem('review_history', JSON.stringify(historyList.value))
+    }
+  }
+}
+
+const statusType = (status) => {
+  switch (status) {
+    case 0: return 'info'
+    case 1: return 'warning'
+    case 2: return 'success'
+    case 3: return 'danger'
+    default: return 'info'
+  }
+}
+
+const statusText = (status) => {
+  switch (status) {
+    case 0: return '待处理'
+    case 1: return '处理中'
+    case 2: return '成功'
+    case 3: return '失败'
+    default: return '未知'
+  }
+}
+
+const renderedReport = computed(() => {
+  if (currentTask.value && currentTask.value.resultSummary) {
+    return marked(currentTask.value.resultSummary)
+  }
+  return ''
+})
+
+const pollingProgress = ref(0)
+
+const pollTask = async (taskId) => {
+  try {
+    const res = await getTask(taskId)
+    const task = res.data
+    currentTask.value = task
+    saveToHistory(task)
+    if (task.status === 2 || task.status === 3) {
+      stopPolling()
+      if (task.status === 2) {
+        ElMessage.success('审查完成！')
+      } else {
+        ElMessage.error('审查失败')
+      }
+    }
+  } catch (error) {
+    console.error('轮询出错', error)
+  }
+}
+
+const startPolling = (taskId) => {
+  if (pollingTimer) clearInterval(pollingTimer)
+  pollingCount = 0
+  pollingTimer = setInterval(() => {
+    pollTask(taskId)
+    pollingCount++
+    pollingProgress.value = Math.min(100, pollingCount * 5)
+    if (pollingCount >= 30) {
+      stopPolling()
+      ElMessage.warning('查询超时，请手动刷新')
+    }
+  }, pollingInterval)
+}
+
+const stopPolling = () => {
+  if (pollingTimer) {
+    clearInterval(pollingTimer)
+    pollingTimer = null
+  }
+}
+
+const handleSubmit = async () => {
+  if (!submitForm.codeContent.trim()) {
+    ElMessage.warning('请输入代码内容')
+    return
+  }
+  submitting.value = true
+  try {
+    const res = await submitTask(submitForm.codeContent, submitForm.lang)
+    const taskId = res.data.taskId
+    ElMessage.success(`任务已提交，ID: ${taskId}`)
+    currentTask.value = { id: taskId, status: 0 }
+    saveToHistory({ id: taskId, lang: submitForm.lang, status: 0, createdAt: new Date().toISOString() })
+    startPolling(taskId)
+  } catch (error) {
+    ElMessage.error('提交失败：' + error.message)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const viewHistoryTask = (task) => {
+  currentTask.value = task
+  activeTab.value = 'submit'
+  if (task.status === 0 || task.status === 1) {
+    startPolling(task.id)
+  } else {
+    stopPolling()
+  }
+}
+
+const formatTime = (timeStr) => {
+  if (!timeStr) return '-'
+  const date = new Date(timeStr)
+  return date.toLocaleString('zh-CN')
+}
+
+onUnmounted(() => {
+  stopPolling()
+})
+
+onMounted(() => {
+  loadHistory()
+})
+</script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+}
+
+#app {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  min-height: 100vh;
+}
+
+.app-wrapper {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  font-size: 28px;
+}
+
+.logo-text {
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.nav-hint {
+  font-size: 14px;
+  color: #666;
+}
+
+.app-main {
+  flex: 1;
+  padding: 32px 24px;
+}
+
+.main-content {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.custom-tabs {
+  background: transparent;
+}
+
+.custom-tabs :deep(.el-tabs__header) {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 8px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.custom-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.custom-tabs :deep(.el-tabs__item) {
+  height: 44px;
+  line-height: 44px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #666;
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+.custom-tabs :deep(.el-tabs__item.is-active) {
+  color: #fff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.custom-tabs :deep(.el-tabs__active-bar) {
+  display: none;
+}
+
+.tab-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-icon {
+  font-size: 16px;
+}
+
+.submit-panel,
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.submit-card,
+.history-card,
+.result-card {
+  border: none;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.submit-card :deep(.el-card__header),
+.history-card :deep(.el-card__header),
+.result-card :deep(.el-card__header) {
+  background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
+  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+  padding: 16px 20px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.title-icon {
+  font-size: 20px;
+}
+
+.task-id-tag {
+  margin-left: 8px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.code-input {
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 14px;
+}
+
+.code-input :deep(.el-textarea__inner) {
+  font-family: 'Fira Code', 'Consolas', monospace;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border-radius: 10px;
+  padding: 16px;
+  line-height: 1.6;
+}
+
+.submit-btn-item {
+  margin-bottom: 0;
+  margin-top: 8px;
+}
+
+.submit-btn {
+  width: 100%;
+  height: 48px;
+  font-size: 16px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+.submit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.animate-in {
+  animation: slideIn 0.4s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.result-content {
+  padding: 8px 0;
+}
+
+.error-content {
+  padding: 16px 0;
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+}
+
+.loading-spinner {
+  font-size: 48px;
+  color: #667eea;
+  margin-bottom: 16px;
+}
+
+.loading-text {
+  color: #666;
+  margin-bottom: 20px;
+}
+
+.custom-progress {
+  width: 200px;
+}
+
+.custom-progress :deep(.el-progress-bar__outer) {
+  border-radius: 10px;
+}
+
+.custom-progress :deep(.el-progress-bar__inner) {
+  border-radius: 10px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 20px;
+}
+
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.empty-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.empty-hint {
+  font-size: 14px;
+  color: #999;
+}
+
+.history-table {
+  font-size: 14px;
+}
+
+.history-table :deep(.el-table__header-wrapper th) {
+  background: #f8f9ff;
+  color: #333;
+  font-weight: 600;
+}
+
+.history-table :deep(.el-table__row) {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.history-table :deep(.el-table__row:hover) {
+  background: #f0f2ff !important;
+}
+
+.task-id {
+  font-family: 'Fira Code', monospace;
+  font-weight: 500;
+  color: #667eea;
+}
+
+.time-text {
+  color: #666;
+  font-size: 13px;
+}
+
+.app-footer {
+  text-align: center;
+  padding: 24px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+}
+
+.markdown-body {
+  padding: 20px;
+  background: #fafafa;
+  border-radius: 10px;
+  line-height: 1.8;
+  font-size: 14px;
+}
+
+.markdown-body h1 {
+  font-size: 24px;
+  margin-bottom: 16px;
+  color: #333;
+  border-bottom: 2px solid #667eea;
+  padding-bottom: 8px;
+}
+
+.markdown-body h2 {
+  font-size: 20px;
+  margin-top: 24px;
+  margin-bottom: 12px;
+  color: #444;
+}
+
+.markdown-body h3 {
+  font-size: 16px;
+  margin-top: 20px;
+  margin-bottom: 8px;
+  color: #555;
+}
+
+.markdown-body p {
+  margin-bottom: 12px;
+}
+
+.markdown-body ul, .markdown-body ol {
+  padding-left: 24px;
+  margin-bottom: 12px;
+}
+
+.markdown-body li {
+  margin-bottom: 6px;
+}
+
+.markdown-body code {
+  background: #f0f2ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Fira Code', monospace;
+  font-size: 13px;
+  color: #667eea;
+}
+
+.markdown-body pre {
+  background: #1e1e1e;
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  color: #d4d4d4;
+  padding: 0;
+}
+
+.markdown-body blockquote {
+  border-left: 4px solid #667eea;
+  padding-left: 16px;
+  margin: 16px 0;
+  color: #666;
+  background: #f8f9ff;
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
+}
+</style>
