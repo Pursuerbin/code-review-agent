@@ -189,7 +189,7 @@ MIT License
 
 如有问题或建议，请通过以下方式联系：
 - 提交 GitHub Issue
-- 发送邮件至 developer@example.com
+- 发送邮件至 1597338110@qq.com
 
 ---
 
