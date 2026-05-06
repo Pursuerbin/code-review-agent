@@ -1,16 +1,27 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: '/api',   // 代理会转发到后端
+  baseURL: '/api',
   timeout: 30000
 })
 
-// 提交审查任务
 export const submitTask = (codeContent, lang = 'java') => {
   return api.post('/review/submit', { codeContent, lang })
 }
 
-// 查询任务状态和结果
 export const getTask = (taskId) => {
   return api.get(`/review/task/${taskId}`)
+}
+
+export const executeAssistant = (actionType, input, lang = 'java', extraContext = '') => {
+  return api.post('/assistant/execute', {
+    actionType,
+    input,
+    language: lang,
+    extraContext
+  })
+}
+
+export const listAgents = () => {
+  return api.get('/assistant/agents')
 }

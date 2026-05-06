@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-public class LogicAgent implements CodeReviewAgent {
+public class LogicAgent implements CodeReviewAgent, UnifiedAgent {
 
     @Value("${spring.ai.openai.api-key}")
     private String apiKey;
@@ -98,5 +98,10 @@ public class LogicAgent implements CodeReviewAgent {
         }
         
         return "LogicAgent 无响应";
+    }
+
+    @Override
+    public String execute(String codeContent, String language, String additionalContext) {
+        return review(codeContent, language);
     }
 }

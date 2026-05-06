@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-public class SecurityAgent implements CodeReviewAgent {
+public class SecurityAgent implements CodeReviewAgent, UnifiedAgent {
 
     @Value("${spring.ai.openai.api-key}")
     private String apiKey;
@@ -100,5 +100,10 @@ public class SecurityAgent implements CodeReviewAgent {
         }
         
         return "SecurityAgent 无响应";
+    }
+
+    @Override
+    public String execute(String codeContent, String language, String additionalContext) {
+        return review(codeContent, language);
     }
 }

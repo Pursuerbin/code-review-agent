@@ -14,6 +14,8 @@ public class ReviewTask {
     private String lang;
     private Integer status;
     private String resultSummary;
+    private String taskType;
+    private String extraContext;
     
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
