@@ -24,7 +24,7 @@ spring:
 
   ai:
     openai:
-      api-key: sk-3bb568ebffcb4a649ff267da81dbab97
+      api-key: 你的api-key
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
       chat:
         options:
